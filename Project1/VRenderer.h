@@ -31,10 +31,13 @@ private:
   } _mainDevice;
 
   VkQueue _graphicsQueue;
+  VkQueue _presentationQueue;
+  VkSurfaceKHR _surface;
 
   // vulkan function
   void createInstance();
   void createLogicalDevice();
+  void createSurface();
 
   // get function
   void getPhysicalDevice();
@@ -42,11 +45,13 @@ private:
   // Check if the hardware support all the extensions
   // -- checker functions.
   bool checkInstacneExtensionSupport(std::vector<const char*>& checkExtension);
+  bool checkDeviceExtensionSupport(VkPhysicalDevice device);
   bool checkDeviceSuitable(VkPhysicalDevice device);
 
 
   // -- Getter functions
   QueueFamilyIndices getQueueFamilies(VkPhysicalDevice device);
+  SwapChainDetails  getSwapChainDetails(VkPhysicalDevice device);
 
 };
 

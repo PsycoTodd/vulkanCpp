@@ -1,5 +1,6 @@
 #include "VRenderer.h"
 #include <iostream>
+#include <set>
 
 
 
@@ -14,6 +15,7 @@ int VRenderer::init(GLFWwindow * newWindow)
 
   try {
     createInstance();
+    createSurface();
     getPhysicalDevice();
     createLogicalDevice();
   }
@@ -27,6 +29,7 @@ int VRenderer::init(GLFWwindow * newWindow)
 
 void VRenderer::cleanup()
 {
+  vkDestroySurfaceKHR(_instance, _surface, nullptr);
   vkDestroyDevice(_mainDevice.logicalDevice, nullptr);
   vkDestroyInstance(_instance, nullptr);
 }
@@ -88,21 +91,31 @@ void VRenderer::createLogicalDevice()
 {
   // get the queue family indices.
   QueueFamilyIndices indices = getQueueFamilies(_mainDevice.physicalDevice);
-  // Queue that logical deivce needs to create
-  VkDeviceQueueCreateInfo queueCreateInfo = {};
-  queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueCreateInfo.queueFamilyIndex = indices.graphicsFamily;
-  queueCreateInfo.queueCount = 1;
-  float priority = 1.0f; // 1 is highest priority
-  queueCreateInfo.pQueuePriorities = &priority;
 
+  // Vector for queue creation information, and set for family indices.
+  std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+  std::set<int> queueFamilyIndices = { indices.graphicsFamily, indices.presentationFamily };
+
+
+  // Queues that logical deivce needs to create
+  for (int queueFamilyIndex : queueFamilyIndices) {
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = queueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    float priority = 1.0f; // 1 is highest priority
+    queueCreateInfo.pQueuePriorities = &priority;
+
+    queueCreateInfos.push_back(queueCreateInfo);
+  }
+ 
   // Information to create logical device
   VkDeviceCreateInfo deviceCreateInfo = {};
   deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  deviceCreateInfo.queueCreateInfoCount = 1;
-  deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-  deviceCreateInfo.enabledExtensionCount = 0;
-  deviceCreateInfo.ppEnabledExtensionNames = nullptr;
+  deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+  deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+  deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+  deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
   VkPhysicalDeviceFeatures deviceFeatures = {};
 
@@ -116,6 +129,16 @@ void VRenderer::createLogicalDevice()
 
   // We also want to get the queue.
   vkGetDeviceQueue(_mainDevice.logicalDevice, indices.graphicsFamily, 0, &_graphicsQueue);
+  vkGetDeviceQueue(_mainDevice.logicalDevice, indices.presentationFamily, 0, &_presentationQueue);
+}
+
+void VRenderer::createSurface()
+{
+  // create surface (creating a surface crate info struct)
+  VkResult result = glfwCreateWindowSurface(_instance, _window, nullptr, &_surface);
+  if (result != VK_SUCCESS) {
+    throw std::runtime_error("Failed to create a surface!");
+  }
 }
 
 void VRenderer::getPhysicalDevice()
@@ -166,6 +189,33 @@ bool VRenderer::checkInstacneExtensionSupport(std::vector<const char*>& checkExt
   return true;
 }
 
+bool VRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device)
+{
+  uint32_t extensionCount = 0;
+  vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+  
+  if (extensionCount == 0) {
+    return false;
+  }
+
+  std::vector<VkExtensionProperties> extensions(extensionCount);
+  vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data());
+  // Check for the extensions.
+  for (const auto &deviceExtension : deviceExtensions) {
+    bool hasExt = false;
+    for (const auto &extension : extensions) {
+      if (strcmp(deviceExtension, extension.extensionName) == 0) {
+        hasExt = true;
+        break;
+      }
+    }
+    if (!hasExt) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool VRenderer::checkDeviceSuitable(VkPhysicalDevice device)
 {
   // Information about the device itself (ID, name, type).
@@ -176,7 +226,15 @@ bool VRenderer::checkDeviceSuitable(VkPhysicalDevice device)
   VkPhysicalDeviceFeatures2*/
 
   QueueFamilyIndices indices = getQueueFamilies(device);
-  return indices.isValid();
+
+  bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+  bool swapChainValid = false;
+  if (extensionsSupported) {
+    SwapChainDetails swapChainDetails = getSwapChainDetails(device);
+    swapChainValid = !swapChainDetails.presentationModes.empty() && !swapChainDetails.formats.empty();
+  }
+  return indices.isValid() && extensionsSupported && swapChainValid;
 
   return false;
 }
@@ -197,6 +255,14 @@ QueueFamilyIndices VRenderer::getQueueFamilies(VkPhysicalDevice device)
       indices.graphicsFamily = i; // If queue family is valid, then get index
     }
 
+    // Check if Queue family supports presentation
+    VkBool32 presentationSupport = false;
+    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, _surface, &presentationSupport);
+    // Check if queue is presentation type (can be both graphics and presentation)
+    if (queueFamily.queueCount > 0 && presentationSupport) {
+      indices.presentationFamily = i;
+    }
+
     if (indices.isValid()) {
       break;
     }
@@ -205,4 +271,31 @@ QueueFamilyIndices VRenderer::getQueueFamilies(VkPhysicalDevice device)
   }
 
   return indices;
+}
+
+SwapChainDetails VRenderer::getSwapChainDetails(VkPhysicalDevice device)
+{
+  SwapChainDetails scdetails;
+
+  // Get the surface capabilities for the given surface on the given physical devices
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, _surface, &scdetails.surfaceCapabilities);
+
+  //-- FORMAT --
+  uint32_t formatCount = 0;
+  vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &formatCount, nullptr);
+
+  if (formatCount) {
+    scdetails.formats.resize(formatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &formatCount, scdetails.formats.data());
+  }
+
+  uint32_t presentationCount = 0;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentationCount, nullptr);
+
+  if (presentationCount) {
+    scdetails.presentationModes.resize(presentationCount);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentationCount, scdetails.presentationModes.data());
+  }
+
+  return scdetails;
 }
