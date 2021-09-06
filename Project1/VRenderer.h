@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <vector>
 
+#include "Utilities.h"
+
 class VRenderer
 {
 public:
@@ -23,11 +25,28 @@ private:
   // Vulkan component
   VkInstance _instance;
 
+  struct {
+    VkPhysicalDevice physicalDevice;
+    VkDevice logicalDevice;
+  } _mainDevice;
+
+  VkQueue _graphicsQueue;
+
   // vulkan function
   void createInstance();
+  void createLogicalDevice();
+
+  // get function
+  void getPhysicalDevice();
 
   // Check if the hardware support all the extensions
+  // -- checker functions.
   bool checkInstacneExtensionSupport(std::vector<const char*>& checkExtension);
+  bool checkDeviceSuitable(VkPhysicalDevice device);
+
+
+  // -- Getter functions
+  QueueFamilyIndices getQueueFamilies(VkPhysicalDevice device);
 
 };
 

@@ -124,6 +124,7 @@
     <ClCompile Include="VRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Utilities.h" />
     <ClInclude Include="VRenderer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
