@@ -33,11 +33,18 @@ private:
   VkQueue _graphicsQueue;
   VkQueue _presentationQueue;
   VkSurfaceKHR _surface;
+  VkSwapchainKHR _swapChain;
+  std::vector<SwapchainImage> _swapChainImages;
+
+  // Utility
+  VkFormat swapChainImageFormat;
+  VkExtent2D swapChainExtent;
 
   // vulkan function
   void createInstance();
   void createLogicalDevice();
   void createSurface();
+  void createSwapChain();
 
   // get function
   void getPhysicalDevice();
@@ -53,5 +60,12 @@ private:
   QueueFamilyIndices getQueueFamilies(VkPhysicalDevice device);
   SwapChainDetails  getSwapChainDetails(VkPhysicalDevice device);
 
+  // -- Chose functions
+  VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
+  VkPresentModeKHR chooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes);
+  VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
+
+  // == Create functions
+  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 };
 
